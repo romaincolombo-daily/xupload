@@ -25,7 +25,7 @@ import (
 )
 
 const progname = "xupload"
-const version = "3.0.2"
+const version = "3.0.3"
 
 var (
 	showHelp                                     = flag.Bool("help", false, "Display help and exit")
@@ -611,7 +611,7 @@ func monitorHandler(response http.ResponseWriter, request *http.Request) {
 		"outgoing": map[string]interface{}{
 			"path":     outgoingPath,
 			"maxspace": maxSpace / (1024 * 1024),
-			"maxage":   age(int64(time.Since(maxAge)) / int64(time.Second)),
+			"maxage":   int64(time.Since(maxAge)) / int64(time.Second),
 			"count":    outgoingCount,
 			"size":     outgoingSize / (1024 * 1024),
 		},
@@ -732,8 +732,8 @@ func main() {
 	for _, path := range config.GetPaths("server.listen") {
 		if parts := strings.Split(config.GetStringMatch(path, "_", "^(?:\\*|\\d+(?:\\.\\d+){3}|\\[[^\\]]+\\])(?::\\d+)?(?:(?:,[^,]+){2})?$"), ","); parts[0] != "_" {
 			server := &http.Server{
-				Addr:        strings.TrimLeft(parts[0], "*"),
-				ReadTimeout: 60 * time.Second,
+				Addr: strings.TrimLeft(parts[0], "*"),
+				// ReadTimeout: 60 * time.Second,
 			}
 			if len(parts) > 1 {
 				go server.ListenAndServeTLS(parts[1], parts[2])
