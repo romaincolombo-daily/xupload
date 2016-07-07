@@ -25,7 +25,7 @@ import (
 )
 
 const progname = "xupload"
-const version = "3.0.3"
+const version = "3.0.5"
 
 var (
 	showHelp                                     = flag.Bool("help", false, "Display help and exit")
@@ -56,7 +56,7 @@ func startupHandler(next http.Handler, methods []string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Server", fmt.Sprintf("%s/%s", progname, version))
 		response.Header().Set("Access-Control-Allow-Origin", "*")
-		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Content-Range, X-Content-Range, Content-Disposition, Content-Description, Session-ID, X-Session-ID")
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, X-Content-Range, Content-Disposition, Content-Description, Session-ID, X-Session-ID")
 		if methods != nil {
 			response.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ", "))
 		}
