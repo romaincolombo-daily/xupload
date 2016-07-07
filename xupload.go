@@ -56,7 +56,7 @@ func startupHandler(next http.Handler, methods []string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Server", fmt.Sprintf("%s/%s", progname, version))
 		response.Header().Set("Access-Control-Allow-Origin", "*")
-		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, Content-Disposition, Content-Description, Session-ID")
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Content-Range, X-Content-Range, Content-Disposition, Content-Description, Session-ID, X-Session-ID")
 		if methods != nil {
 			response.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ", "))
 		}
@@ -335,6 +335,9 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 	} else {
 		length, _ := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 		matcher := rangeMatcher.FindStringSubmatch(request.Header.Get("Content-Range"))
+		if matcher == nil {
+			matcher = rangeMatcher.FindStringSubmatch(request.Header.Get("X-Content-Range"))
+		}
 		start := int64(0)
 		end := int64(0)
 		size := int64(0)
