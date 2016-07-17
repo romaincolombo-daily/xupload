@@ -1,3 +1,9 @@
+xupload (3.1.0) stable; urgency=medium
+
+  *  add local and remote (proxied) content serving
+
+ -- Pierre-Yves Kerembellec <py.kerembellec@gmail.com>  Fri, 15 Jul 2016 17:26:18 +0200
+
 xupload (3.0.5) stable; urgency=medium
 
   * advertising Content-Length in CORS headers break urlgrabber!!!

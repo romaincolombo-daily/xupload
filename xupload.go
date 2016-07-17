@@ -13,6 +13,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/exec"
@@ -25,7 +26,7 @@ import (
 )
 
 const progname = "xupload"
-const version = "3.0.5"
+const version = "3.1.0"
 
 var (
 	showHelp                                     = flag.Bool("help", false, "Display help and exit")
@@ -52,7 +53,7 @@ func crossdomainHandler(response http.ResponseWriter, request *http.Request) {
 		"</cross-domain-policy>\n"))
 }
 
-func startupHandler(next http.Handler, methods []string) http.Handler {
+func baseHandler(next http.Handler, methods []string) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Server", fmt.Sprintf("%s/%s", progname, version))
 		response.Header().Set("Access-Control-Allow-Origin", "*")
@@ -76,6 +77,7 @@ func startupHandler(next http.Handler, methods []string) http.Handler {
 				return
 			}
 		}
+
 		if remote, port, err := net.SplitHostPort(request.RemoteAddr); err == nil {
 			if remote := net.ParseIP(remote); remote != nil {
 				if forwarded := request.Header.Get("X-Forwarded-For"); forwarded != "" {
@@ -99,6 +101,49 @@ func startupHandler(next http.Handler, methods []string) http.Handler {
 				}
 			}
 		}
+
+		for _, static := range config.GetPaths("static") {
+			if matcher, err := regexp.Compile(config.GetString(static+".source", "")); err == nil {
+				if matcher.MatchString(request.URL.Path) {
+					parts := matcher.FindStringSubmatch(request.URL.Path)
+					target := config.GetString(static+".target", "")
+					for index := 0; index < len(parts); index++ {
+						target = strings.Replace(target, fmt.Sprintf("$%d", index), parts[index], -1)
+					}
+					if strings.HasPrefix(target, "http") {
+						proxy := httputil.ReverseProxy{Director: func(request *http.Request) {
+							if url, err := url.Parse(target); err == nil {
+								request.URL.Scheme = url.Scheme
+								request.URL.Host = url.Host
+								request.URL.Path = url.Path
+								request.Host = url.Host
+								for _, header := range config.GetPaths(static + ".headers") {
+									pair := strings.SplitN(config.GetString(header, ""), ":", 2)
+									pair[0] = strings.Trim(pair[0], " ")
+									pair[1] = strings.Trim(pair[1], " ")
+									if pair[0] != "" && pair[1] != "" {
+										if pair[0] == "Host" {
+											request.Host = pair[1]
+										} else {
+											request.Header.Set(pair[0], pair[1])
+										}
+									}
+								}
+							}
+						},
+						}
+						proxy.ServeHTTP(response, request)
+					} else if target != "" {
+						if mime := config.GetString(static+".mime", ""); mime != "" {
+							response.Header().Set("Content-Type", mime)
+						}
+						http.ServeFile(response, request, target)
+					}
+					return
+				}
+			}
+		}
+
 		next.ServeHTTP(response, request)
 	})
 }
@@ -643,7 +688,7 @@ func garbageCollector(now time.Time) {
 	cleanupDone := config.GetDurationBounds("incoming.cleanup.done", 30, 10, 60)
 	sessions.Cleanup(int64(cleanupProgressive), int64(cleanupResumeable), int64(cleanupDone))
 	filepath.Walk(incomingPath, func(path string, info os.FileInfo, err error) error {
-		if info.Mode().IsRegular() && now.Sub(info.ModTime()) >= (time.Second*time.Duration(math.Max(cleanupProgressive, cleanupResumeable))) {
+		if info != nil && info.Mode().IsRegular() && now.Sub(info.ModTime()) >= (time.Second*time.Duration(math.Max(cleanupProgressive, cleanupResumeable))) {
 			os.Remove(path)
 			logger.Info(map[string]interface{}{"type": "garbage", "path": "incoming", "document": info.Name(),
 				"size": info.Size(), "age": age(int64(now.Sub(info.ModTime())) / int64(time.Second))})
@@ -653,7 +698,7 @@ func garbageCollector(now time.Time) {
 	size := int64(0)
 	documents := []Document{}
 	filepath.Walk(outgoingPath, func(path string, info os.FileInfo, err error) error {
-		if info.Mode().IsRegular() {
+		if info != nil && info.Mode().IsRegular() {
 			size += info.Size()
 			documents = append(documents, Document{path: path, size: info.Size(), modified: info.ModTime().Unix()})
 			if info.ModTime().Before(maxAge) {
@@ -715,22 +760,22 @@ func main() {
 	aliases := false
 	for _, path := range config.GetPaths("incoming.endpoint") {
 		http.Handle(strings.TrimRight(config.GetString(path, "/upload"), "/"),
-			startupHandler(authHandler(http.HandlerFunc(incomingHandler), "incoming.acl"), []string{"POST"}))
+			baseHandler(authHandler(http.HandlerFunc(incomingHandler), "incoming.acl"), []string{"POST"}))
 		aliases = true
 	}
 	if !aliases {
 		http.Handle(strings.TrimRight(config.GetString("incoming.endpoint", "/upload"), "/"),
-			startupHandler(authHandler(http.HandlerFunc(incomingHandler), "incoming.acl"), []string{"POST"}))
+			baseHandler(authHandler(http.HandlerFunc(incomingHandler), "incoming.acl"), []string{"POST"}))
 	}
 	outgoingEndpoint = strings.TrimRight(config.GetString("outgoing.endpoint", "/download"), "/")
-	http.Handle(outgoingEndpoint+"/", startupHandler(authHandler(http.HandlerFunc(outgoingHandler), "outgoing.acl"), []string{"HEAD", "GET"}))
+	http.Handle(outgoingEndpoint+"/", baseHandler(authHandler(http.HandlerFunc(outgoingHandler), "outgoing.acl"), []string{"HEAD", "GET"}))
 	http.Handle(strings.TrimRight(config.GetString("progress.endpoint", "/progress"), "/"),
-		startupHandler(authHandler(http.HandlerFunc(progressHandler), "progress.acl"), []string{"GET"}))
+		baseHandler(authHandler(http.HandlerFunc(progressHandler), "progress.acl"), []string{"GET"}))
 	http.Handle(strings.TrimRight(config.GetString("monitor.endpoint", "/monitor"), "/"),
-		startupHandler(authHandler(http.HandlerFunc(monitorHandler), "monitor.acl"), []string{"HEAD", "GET"}))
+		baseHandler(authHandler(http.HandlerFunc(monitorHandler), "monitor.acl"), []string{"HEAD", "GET"}))
 
-	http.Handle("/crossdomain.xml", startupHandler(http.HandlerFunc(crossdomainHandler), []string{"GET"}))
-	http.Handle("/", startupHandler(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) { response.WriteHeader(http.StatusNotFound) }), nil))
+	http.Handle("/crossdomain.xml", baseHandler(http.HandlerFunc(crossdomainHandler), []string{"GET"}))
+	http.Handle("/", baseHandler(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) { response.WriteHeader(http.StatusNotFound) }), nil))
 
 	for _, path := range config.GetPaths("server.listen") {
 		if parts := strings.Split(config.GetStringMatch(path, "_", "^(?:\\*|\\d+(?:\\.\\d+){3}|\\[[^\\]]+\\])(?::\\d+)?(?:(?:,[^,]+){2})?$"), ","); parts[0] != "_" {
