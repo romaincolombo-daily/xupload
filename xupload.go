@@ -26,7 +26,7 @@ import (
 )
 
 const progname = "xupload"
-const version = "3.1.0"
+const version = "3.1.1"
 
 var (
 	showHelp                                     = flag.Bool("help", false, "Display help and exit")
@@ -289,7 +289,16 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 			if err != nil {
 				break
 			}
-			if part.FormName() == "file" {
+			names := false
+			matched := false
+			for _, name := range config.GetPaths("incoming.formname") {
+				if part.FormName() == config.GetString(name, "file") {
+					matched = true
+					break
+				}
+				names = true
+			}
+			if !names || matched {
 				name := filepath.Base(part.FileName())
 				if filepath.Ext(name) == "" {
 					sendResponse(response, request, map[string]string{"error": "missing filename extension"}, http.StatusOK)

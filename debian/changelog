@@ -1,3 +1,9 @@
+xupload (3.1.1) stable; urgency=medium
+
+  * accept any form-name for multipart uploads (backward compatibility)
+
+ -- Pierre-Yves Kerembellec <py.kerembellec@gmail.com>  Mon, 25 Jul 2016 16:30:31 +0200
+
 xupload (3.1.0) stable; urgency=medium
 
   *  add local and remote (proxied) content serving
