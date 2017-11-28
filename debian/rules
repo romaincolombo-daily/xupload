@@ -18,7 +18,7 @@ install: build
 	dh_testdir
 	dh_prep
 	dh_install xupload /usr/sbin
-	dh_install conf/xupload.conf /etc/xupload
+	dh_install xupload.conf /etc/xupload
 
 binary-indep: build install
 

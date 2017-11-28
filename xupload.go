@@ -7,9 +7,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/pyke369/golang-support/uconfig"
-	"github.com/pyke369/golang-support/ulog"
 	"io"
+	"io/ioutil"
 	"math"
 	"net"
 	"net/http"
@@ -23,10 +22,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pyke369/golang-support/uconfig"
+	"github.com/pyke369/golang-support/ulog"
 )
 
 const progname = "xupload"
-const version = "3.1.1"
+const version = "3.1.2"
 
 var (
 	showHelp                                     = flag.Bool("help", false, "Display help and exit")
@@ -58,6 +60,8 @@ func baseHandler(next http.Handler, methods []string) http.Handler {
 		response.Header().Set("Server", fmt.Sprintf("%s/%s", progname, version))
 		response.Header().Set("Access-Control-Allow-Origin", "*")
 		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Range, X-Content-Range, Content-Disposition, Content-Description, Session-ID, X-Session-ID")
+		response.Header().Set("Access-Control-Expose-Headers", "Range")
+		response.Header().Set("Access-Control-Max-Age", "600")
 		if methods != nil {
 			response.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ", "))
 		}
@@ -189,6 +193,7 @@ func authHandler(next http.Handler, path string) http.Handler {
 }
 
 func sendResponse(response http.ResponseWriter, request *http.Request, fields map[string]string, status int) {
+	ioutil.ReadAll(request.Body)
 	seal := ""
 	if secret := config.GetString("incoming.secret", ""); secret != "" {
 		var keys []string
@@ -464,7 +469,6 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 			}
 		}
 		if size != session.size || start != session.received || (session.received+length) > session.size {
-			session.state = STATE_ERROR
 			session.errmsg = "content range sequence error"
 			response.Header().Set("Range", fmt.Sprintf("0-%.0f/%d", math.Max(float64(session.received), 1)-1, session.size))
 			sendResponse(response, request, map[string]string{"error": session.errmsg}, http.StatusBadRequest)
