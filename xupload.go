@@ -28,7 +28,7 @@ import (
 )
 
 const progname = "xupload"
-const version = "3.1.2"
+const version = "3.1.3"
 
 var (
 	showHelp                                     = flag.Bool("help", false, "Display help and exit")
@@ -406,11 +406,10 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 			size = length
 		} else {
 			start, _ = strconv.ParseInt(matcher[1], 10, 64)
-			end, _ = strconv.ParseInt(matcher[2], 10, 64)
-			size, _ = strconv.ParseInt(matcher[3], 10, 64)
-			if end == 0 {
+			if end, err = strconv.ParseInt(matcher[2], 10, 64); err != nil {
 				end = size - 1
 			}
+			size, _ = strconv.ParseInt(matcher[3], 10, 64)
 		}
 		if size <= 0 || start > end || start < 0 || start >= size || end < 0 || end >= size || length != (end-start+1) {
 			sendResponse(response, request, map[string]string{"error": "invalid content range"}, http.StatusBadRequest)
