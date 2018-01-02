@@ -20,6 +20,7 @@ type Session struct {
 	name, path, errmsg    string
 	state, size, received int64
 	checksum              hash.Hash
+	sync.RWMutex
 }
 
 type Sessions struct {

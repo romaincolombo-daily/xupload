@@ -467,7 +467,8 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 				totalCount++
 			}
 		}
-		if size != session.size || start != session.received || (session.received+length) > session.size {
+		session_received_local := session.received
+		if size != session.size || start != session_received_local || (session_received_local+length) > session.size {
 			session.errmsg = "content range sequence error"
 			response.Header().Set("Range", fmt.Sprintf("0-%.0f/%d", math.Max(float64(session.received), 1)-1, session.size))
 			sendResponse(response, request, map[string]string{"error": session.errmsg}, http.StatusBadRequest)
@@ -493,24 +494,38 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 				if received+int64(read) > length {
 					read = int(length - received)
 				}
-				if _, err := handle.WriteAt(block[0:read], int64(session.received)); err != nil {
-					session.state = STATE_ERROR
-					session.errmsg = "cannot append to destination"
+				session.Lock()
+				if session.received == session_received_local {
+					if _, err := handle.WriteAt(block[0:read], int64(session.received)); err != nil {
+						session.Unlock()
+						session.state = STATE_ERROR
+						session.errmsg = "cannot append to destination"
+						sendResponse(response, request, map[string]string{"error": session.errmsg}, http.StatusBadRequest)
+						logger.Info(map[string]interface{}{"type": "incoming", "error": session.errmsg, "remote": request.RemoteAddr,
+							"uuid": uuid, "name": session.name, "size": session.size, "start": start, "received": received})
+						return
+					}
+					session.received += int64(read)
+					session_received_local += int64(read)
+					received += int64(read)
+					session.checksum.Write(block[0:read])
+					session.Unlock()
+				} else {
+					session.Unlock()
+					session.errmsg = "concurrent upload sequences"
+					response.Header().Set("Range", fmt.Sprintf("0-%.0f/%d", math.Max(float64(session.received), 1)-1, session.size))
 					sendResponse(response, request, map[string]string{"error": session.errmsg}, http.StatusBadRequest)
 					logger.Info(map[string]interface{}{"type": "incoming", "error": session.errmsg, "remote": request.RemoteAddr,
 						"uuid": uuid, "name": session.name, "size": session.size, "start": start, "received": received})
 					return
 				}
-				session.received += int64(read)
-				received += int64(read)
-				session.checksum.Write(block[0:read])
 			}
 			if err != nil || received == length {
 				break
 			}
 		}
 		if received < length {
-			session.state = STATE_ERROR
+			// session.state = STATE_ERROR
 			session.errmsg = "incomplete content"
 			sendResponse(response, request, map[string]string{"error": session.errmsg}, http.StatusBadRequest)
 			logger.Info(map[string]interface{}{"type": "incoming", "error": session.errmsg, "remote": request.RemoteAddr,
@@ -518,7 +533,7 @@ func incomingHandler(response http.ResponseWriter, request *http.Request) {
 			return
 		}
 
-		if session.received < session.size {
+		if session_received_local < session.size {
 			crange := fmt.Sprintf("0-%.0f/%d", math.Max(float64(session.received), 1)-1, session.size)
 			response.Header().Set("Range", crange)
 			http.Error(response, crange+"\n", http.StatusCreated)
